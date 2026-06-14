@@ -1,4 +1,3 @@
-![iLEAPP](scripts/_elements/iLEAPP_banner.png)
 
 # iLEAPP — Interpersonal Surveillance edition
 
@@ -125,11 +124,6 @@ famisafe_run_logs
 python ileapp.py -t fs -i <extraction> -o <output> -m my_profile.ilprofile
 ```
 
-## Report examples
-
-See [`examples/`](examples/) for example output (TSV exports of every artifact,
-plus a rendered summary) produced from a test device that was placed under
-FamiSafe monitoring.
 
 ---
 
