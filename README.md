@@ -1,211 +1,137 @@
 ![iLEAPP](scripts/_elements/iLEAPP_banner.png)
 
-# iOS Logs, Events, And Plists Parser
+# iLEAPP — Interpersonal Surveillance edition
 
-Details in blog post here: https://abrignoni.blogspot.com/2019/12/ileapp-ios-logs-events-and-properties.html
+This repository is a fork of **iLEAPP** (iOS Logs, Events, And Plists Parser).
+**The only difference from upstream iLEAPP is the addition of two artifact
+modules** in `scripts/artifacts/`:
 
-Supports iOS/iPadOS 11, 12, 13, 14, 15, 16, and 17.
-Select parsing directly from a compressed .tar/.zip file, or a decompressed directory, or an iTunes/Finder backup folder.
+| File | Role |
+|------|------|
+| [`scripts/artifacts/Surveillance.py`](scripts/artifacts/Surveillance.py) | Generic, app-agnostic detection of interpersonal-surveillance traces. |
+| [`scripts/artifacts/FamiSafe.py`](scripts/artifacts/FamiSafe.py) | Parsing of data specific to the FamiSafe monitoring app. |
 
-## Features
+Everything else is unmodified upstream iLEAPP. The original project README is
+preserved as [`README_og.md`](README_og.md) and remains the reference for
+installation, dependencies, building, and contributing.
 
-Parses:  
-⚙️ Mobile Installation Logs  
-⚙️ iOS 12+ Notifications  
-⚙️ Build Info (iOS version, etc.)  
-⚙️ Wireless cellular service info (IMEI, number, etc.)  
-⚙️ Screen icons list by screen and in grid order.  
-⚙️ ApplicationState.db support for app bundle ID to data container GUID correlation.  
-⚙️ User and computer names that the iOS device connected to. Function updated by Jack Farley (@JackFarley248, http://farleyforensics.com/).  
-etc...
+## Academic context
 
-## Requirements
+This work was carried out as part of a **master's thesis at the University of
+Lausanne** (School of Criminal Justice / *École des sciences criminelles*),
+in **digital forensic science**, on the subject of **interpersonal surveillance
+on iOS** — i.e. the monitoring of one person's device by another (intimate
+partner, family member), as opposed to state or corporate surveillance.
 
-Python 3.10 to Python 3.12.<br>
-If on macOS (Intel) make sure Xcode is installed and have command line tools updated to be able to use Python 3.11.
+The module was developed with the assistance of **Claude Opus**.
 
-### Dependencies
+The longer-term goal is to adapt this module into a **web platform performing
+local-only analysis** (no data leaves the user's machine), so that non-technical
+people can check their own device for signs of surveillance without needing
+forensic expertise.
 
-Dependencies for your python environment are listed in `requirements.txt`. Install them using the below command. Ensure
-the `py` part is correct for your environment, eg `py`, `python`, or `python3`, etc.
+## What `Surveillance.py` looks for
 
-`py -m pip install -r requirements.txt`  
-or  
- `pip3 install -r requirements.txt`
+It is organised around four investigative questions, plus a summary that turns
+the findings into an overall assessment. Each detail artifact **only states
+observed data** — interpretation lives solely in the summary.
 
-To run on **Linux**, you will also need to install `tkinter` separately like so:
+1. **Remote management profiles** — configuration / MDM profiles and the
+   restrictions they enforce (forced encrypted backup from `Truth.plist`, VPN
+   from `EffectiveUserSettings.plist`), the list of managed applications
+   (`MDMAppManagement.plist`), the settings-change history
+   (`MCSettingsEvents.plist`), and `MCState/Shared/MDM.plist`. A remote-management
+   profile on a personal device is one of the strongest indicators.
+2. **Sensitive permissions** — microphone, photo-library and motion
+   permissions from `TCC.db`, completed by location authorisation read from
+   locationd's `clients.plist` (a file iLEAPP does not otherwise parse — a
+   specific contribution of this module), which can reveal an always/background
+   location authorisation.
+3. **Account associations** — a third-party account linked to the device:
+   family-circle membership (`CircleCache.plist`, `JFamilyCircle.plist`,
+   `RMAdminStore-Local.sqlite`), an account added to iMessage
+   (`TransparencyModel.sqlite`), and location sharing (`idstatuscache.plist`,
+   `Identity Lookup Service.tsv`).
+4. **Pairing and backup traces** — trusted-host identifiers (SystemBUID, HostID,
+   host name) from the lockdown log (`handle_pair`) and pair records, the backup
+   library identifier (`com.apple.atc.plist`, `data_ark.plist`), and
+   current/previous backup dates (`Info.plist`, `com.apple.ldbackup.plist`).
 
-`sudo apt-get install python3-tk`
+A separate **assessment summary** aggregates the four categories into one of:
 
-To install on Windows follow the guide, courtesy of Hexordia, here:
-https://www.hexordia.com/s/ILEAPP-Walkthrough.pdf
+- **UNDER SURVEILLANCE** — at least one high-severity signal (e.g. an active
+  MDM/remote-management profile, a known monitoring app holding a sensitive
+  permission or always/background location).
+- **MANUAL CHECK NECESSARY** — medium-severity signals only (e.g. a
+  configuration profile, forced encrypted backup, a third-party app with always
+  location, a family circle with other members, multiple paired computers,
+  iMazing).
+- **ALL CLEAR** — only informational signals, or none.
 
-Windows installation and walkthrough video, by Hexordia, here:
-https://www.youtube.com/watch?v=7qvVFfBM2NU
+### Out of scope (mentioned, not parsed)
 
-## Compile to executable
+Unified-log events such as BackupAgent2 *Starting/Finished backup* lines and
+`mdmd` / `profiled` profile install/remove events. These require unified-log
+support that is not currently available in the iLEAPP environment.
 
-To compile to an executable so you can run this on a system without python installed.
-If using Python 3.10 and above delete the arguments from the following terminal commands.
+## Why FamiSafe is a separate module
 
-_Windows OS_
+`Surveillance.py` deliberately contains **only signals that generalise across
+applications** (standard Apple data stores). Data held *inside a specific app's
+container*, with an app-specific structure, does not generalise and is therefore
+kept out of `Surveillance.py`.
 
-To create ileapp.exe, run:
+[`FamiSafe.py`](scripts/artifacts/FamiSafe.py) is the worked example of this
+separation. It parses FamiSafe-specific stores:
+
+- the application URL cache (`Library/Caches/<bundle>/Cache.db`,
+  `cfurl_cache_receiver_data`), which retains the controlling (parent) account
+  e-mail; and
+- the application run logs (`.../RunLogs/com.wondershare.parentalcontrol*.log`),
+  which record the controlling account, the FamiSafe member/device identifiers,
+  the app version, the API endpoints contacted, and the monitoring capabilities
+  enabled remotely.
+
+The same pattern can be followed to add modules for other monitoring apps
+(Life360, Qustodio, mSpy, …) without polluting the generic detector.
+
+## Supported acquisition types
+
+Designed and tested against the three acquisition types used in the research:
+
+- a **local backup** (iTunes / Finder / iMazing),
+- a **full file system (FFS)** extraction, and
+- a **sysdiagnose** archive.
+
+## Running it
 
 ```
-pyinstaller \scripts\pyinstaller\ileapp.spec
+python ileapp.py -t <fs|tar|zip|gz|itunes> -i <path_to_extraction> -o <output_folder>
 ```
 
-To create ileappGUI.exe, run:
+To run only the surveillance modules, use a profile (`.ilprofile`) listing:
 
 ```
-pyinstaller \scripts\pyinstaller\ileappGUI.spec
+surveillance_remote_management
+surveillance_sensitive_permissions
+surveillance_account_associations
+surveillance_pairing_backup
+surveillance_summary
+famisafe_cached_accounts
+famisafe_run_logs
 ```
 
-_macOS_
-
-To create ileapp, run:
-
 ```
-pyinstaller /scripts/pyinstaller/ileapp_macos.spec
+python ileapp.py -t fs -i <extraction> -o <output> -m my_profile.ilprofile
 ```
 
-To create ileappGUI.app, run:
+## Report examples
 
-```
-pyinstaller /scripts/pyinstaller/ileappGUI_macos.spec
-```
+See [`examples/`](examples/) for example output (TSV exports of every artifact,
+plus a rendered summary) produced from a test device that was placed under
+FamiSafe monitoring.
 
-## Usage
+---
 
-### CLI
-
-```
-$ python ileapp.py -t <zip | tar | fs | gz> -i <path_to_extraction> -o <path_for_report_output>
-```
-
-### GUI
-
-```
-$ python ileappGUI.py
-```
-
-### Help
-
-```
-$ python ileapp.py --help
-```
-
-## Contributing artifact plugins
-
-Each plugin is a Python source file which should be added to the `scripts/artifacts` folder which will be loaded dynamically each time ILEAPP is run.
-
-The plugin source file must contain a dictionary named `__artifacts_v2__` at the very beginning of the module, which defines the artifacts that the plugin processes. The keys in the `__artifacts_v2__` dictionary should be IDs for the artifact(s) which must be unique within ILEAPP. The values should be dictionaries containing the following keys:
-
-```python
-__artifacts_v2__ = {
-    "function_name": {
-        "name": "Human-readable name of the artifact",
-        "description": "Brief description of what the artifact does",
-        "author": "@AuthorUsername",
-        "version": "X.Y",
-        "date": "YYYY-MM-DD",
-        "requirements": "Any specific requirements, or 'none'",
-        "category": "Category of the artifact",
-        "notes": "Additional notes, if any",
-        "paths": ('Path/to/artifact/files',),
-        "output_types": "Output types, often 'all'",
-        "artifact_icon": "feather-icon-name"
-    }
-}
-```
-
-- `function_name`: The name of the function that processes this artifact. This should match exactly with the function name in the script.
-- `name`: A human-readable name for the artifact as it will be displayed in the output files
-- `description`: A brief explanation of what the artifact extracts or analyzes
-- `author`: The name and/or username of the module's author
-- `version`: The current version of the module script
-- `date`: The date of the latest update in YYYY-MM-DD format
-- `requirements`: Any specific requirements for the artifact, or "none" if there are no special requirements
-- `category`: The category the artifact belongs to
-- `notes`: Any additional information about the artifact (can be an empty string)
-- `paths`: A tuple containing one or more file paths (with wildcards if needed) where the artifact data can be found
-- `output_types`: A list of strings or the string 'all' specifying the types of output the artifact produces. Options are:
-  - `["html", "tsv", "lava", ...]`: A list containing any combination of these values
-  - `"all"`: Generates all available output types
-  - `"standard"`: Generates HTML, TSV, LAVA,and timeline output
-  - Individual options:
-    - `"html"`: Generates HTML output
-    - `"tsv"`: Generates TSV (Tab-Separated Values) output
-    - `"timeline"`: Generates timeline output
-    - `"lava"`: Generates output for LAVA (a specific data processing format)
-    - `"kml"`: Generates KML (Keyhole Markup Language) output for Google Earth
-    - `"none"`: Any output generated (For modules only collecting device info)
-- `artifact_icon`: The name of a feathericon to display in the left sidebar ot the HTML report
-
-This info block provides essential metadata about the artifact and is used by the artifact processor to handle the artifact correctly. The plugin loader will attach this information to the corresponding function, making it accessible via the function's globals.
-
-Note: The key in the `__artifacts_v2__` dictionary must exactly match the name of the function that processes the artifact. This ensures that the artifact processor can correctly associate the artifact information with the processing function.
-
-The functions referenced as entry points in the `__artifacts__` dictionary must be preceded by @artifact_processor and take the following arguments:
-
-- An iterable of the files found which are to be processed (as strings)
-- The path of ILEAPP's output folder(as a string)
-- The seeker (of type FileSeekerBase) which found the files
-- A Boolean value indicating whether or not the plugin is expected to wrap text
-
-For example:
-
-```python
-def get_cool_data1(files_found, report_folder, seeker, wrap_text):
-    pass  # do processing here
-```
-
-Plugins are generally expected to provide output in ILEAPP's LAVA output format, HTML, TSV, and optionally submit records to
-the timeline and/or kml files. Functions for generating this output can be found in the `artifact_report` and `ilapfuncs` modules.
-At a high level, an example might resemble:
-
-```python
-__artifacts_v2__ = {
-    "cool_artifact_1": {
-        "name": "Cool Artifact 1",
-        "description": "Extracts cool data from database files",
-        "author": "@username",  # Replace with the actual author's username or name
-        "version": "0.1",  # Version number
-        "date": "2022-10-25",  # Date of the latest version
-        "requirements": "none",
-        "category": "Really cool artifacts",
-        "notes": "",
-        "paths": ('*/com.android.cooldata/databases/database*.db',),
-        "output_types": "Output types, often 'all'",
-        "artifact_icon": "feather-icon-name"
-    }
-}
-
-from scripts.ilapfuncs import artifact_processor
-
-@artifact_processor
-def get_artifactname(files_found, report_folder, seeker, wrap_text, timezone_offset):
-    data_list = []
-    source_path = ''
-
-    for file_found in files_found:
-        source_path = str(file_found)
-
-        # ... process data ...
-        data_list.append((col1, col2, col3))
-
-    data_headers = (('Column1', 'datetime'), 'Column2', 'Column3')
-    return data_headers, data_list, source_path
-```
-
-For more information, read:
-
-- [Updating Modules for Automatic Output Generation](admin/docs/module_updates.md)
-- [Updating Complex Modules to Include LAVA Output](admin/docs/module_updates_advanced.md)
-
-## Acknowledgements
-
-This tool is the result of a collaborative effort of many people in the DFIR community.
-
-iLEAPP logo courtesy of Derek Eiri.
+For all upstream iLEAPP documentation (features, install, build, contributing),
+see [`README_og.md`](README_og.md).
