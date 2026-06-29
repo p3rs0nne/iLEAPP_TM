@@ -109,3 +109,10 @@ instance/
 
 /.obsidian
 /admin/docs/.obsidian
+
+# Surveillance module: local-only docs, examples, and scratch (not committed)
+/docs/
+/examples/
+.tmp_claude/
+/Task.md
+/ileapp_unified_logs_spec.md
